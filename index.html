@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>Provo/Orem Amazing Race Creator</title>
+
+    <!-- Mapbox CSS -->
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+    <link href="https://unpkg.com/@mapbox/mapbox-gl-geocoder@4.7.2/dist/mapbox-gl-geocoder.css" rel="stylesheet" />
+
+    <!-- Mapbox JS -->
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+    <script src="https://unpkg.com/@mapbox/mapbox-gl-geocoder@4.7.2/dist/mapbox-gl-geocoder.min.js"></script>
+
+    <!-- PDF & QR -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            background: #fff;
+        }
+
+        header {
+            background: linear-gradient(90deg, #FF4500, #FFD700);
+            padding: 16px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: #222;
+        }
+
+        .container {
+            padding: 20px;
+            max-width: 900px;
+            margin: auto;
+        }
+
+        .step {
+            margin: 20px 0;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+
+        button,
+        input,
+        select {
+            width: 100%;
+            padding: 8px;
+            margin: 6px 0;
+            font-size: 15px;
+        }
+
+        button {
+            background: #FF4500;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #e03e00;
+        }
+
+        .checkbox-group label {
+            display: block;
+            margin: 4px 0;
+        }
+
+        .clueCard {
+            border: 1px solid #ccc;
+            padding: 8px;
+            margin: 10px 0;
+            border-radius: 6px;
+        }
+
+        #map {
+            height: 450px;
+            display: none;
+            margin-top: 18px;
+        }
+    </style>
+
+</head>
+
+<body>
+
+    <header>🏁 Provo/Orem Amazing Race Creator</header>
+
+    <div class="container">
+
+        <!-- Step 1: Generate + Select Locations -->
+        <div class="step">
+            <h3>Step 1 — Suggested Locations</h3>
+            <button onclick="showSuggestions()">Generate Suggested Spots</button>
+            <div id="suggestions" class="checkbox-group"></div>
+
+            <h4>Add a Custom Stop</h4>
+            <input id="customStopInput" placeholder="Type a custom stop name">
+            <button onclick="addCustomStop()">Add Custom Stop</button>
+
+            <h4>Selected Stops (max 5)</h4>
+            <div id="selectedStops"></div>
+        </div>
+
+        <!-- Step 2: Final Destination Search -->
+        <div class="step">
+            <h3>Step 2 — Choose Final Destination</h3>
+            <div id="geocoderFinal"></div>
+            <div id="finalLocationDisplay" style="margin-top:10px; font-weight:600;">No final destination selected yet.
+            </div>
+        </div>
+
+        <!-- Step 3: Riddle Style -->
+        <div class="step">
+            <h3>Step 3 — Choose Riddle Style</h3>
+            <select id="riddleStyle">
+                <option value="descriptive">Descriptive (features, not names)</option>
+            </select>
+        </div>
+
+        <button onclick="planRace()">Plan Race & Generate Clues</button>
+
+        <div id="output"></div>
+
+        <button onclick="exportPDF()">Export Clue Sheet as PDF</button>
+
+        <div id="map"></div>
+
+    </div>
+
+    <script>
+        mapboxgl.accessToken = "pk.eyJ1IjoiYW1hemluZ3JhY2UxMjMiLCJhIjoiY21qM2N4ZG9zMDM1dzNmcTIzbWtscWhzdCJ9.v5DG7RSgdhz4QJTiS-68Bw";
+
+        // Suggested Spots
+        const curatedSpots = [
+            "Rock Canyon Trailhead",
+            "Kiwanis Park",
+            "Hillcrest Pickleball Courts",
+            "Provo River Parkway",
+            "Y Trail Parking Lot",
+            "BYU Creamery",
+            "Provo City Center Temple",
+            "Utah Lake Marina",
+            "Memorial Park, Provo",
+            "Covey Center for the Arts"
+        ];
+
+        let selectedStops = [];
+        let finalPlace = null;
+
+        // Show checkboxes
+        function showSuggestions() {
+            const container = document.getElementById("suggestions");
+            container.innerHTML = "";
+            const shuffled = curatedSpots.sort(() => Math.random() - 0.5);
+            shuffled.forEach(loc => {
+                container.innerHTML += `
+      <label>
+        <input type="checkbox" value="${loc}" onchange="toggleStop(this)">
+        ${loc}
+      </label>
+    `;
+            });
+        }
+
+        function toggleStop(el) {
+            const val = el.value;
+            if (el.checked) {
+                if (selectedStops.length >= 5) {
+                    alert("Maximum 5 stops allowed.");
+                    el.checked = false;
+                    return;
+                }
+                selectedStops.push(val);
+            } else {
+                selectedStops = selectedStops.filter(x => x !== val);
+            }
+            document.getElementById("selectedStops").innerText = selectedStops.join(" → ");
+        }
+
+        function addCustomStop() {
+            const val = document.getElementById("customStopInput").value.trim();
+            if (!val) return;
+            if (selectedStops.length >= 5) {
+                alert("Maximum 5 stops allowed.");
+                return;
+            }
+            selectedStops.push(val);
+            document.getElementById("selectedStops").innerText = selectedStops.join(" → ");
+            document.getElementById("customStopInput").value = "";
+        }
+
+        // Final Destination Search (Mapbox Geocoder)
+        const geocoderFinal = new MapboxGeocoder({
+            accessToken: mapboxgl.accessToken,
+            placeholder: "Search for a final destination…",
+            mapboxgl: mapboxgl
+        });
+        document.getElementById("geocoderFinal").appendChild(geocoderFinal.onAdd());
+        geocoderFinal.on('result', e => {
+            finalPlace = e.result.place_name;
+            document.getElementById("finalLocationDisplay").innerText = "Final: " + finalPlace;
+        });
+
+        // Descriptive Clues (no names used)
+        function generateClue(from, to) {
+            const templates = [
+                "Head where the wide paths meet shaded trees and gentle breezes.",
+                "Follow along the course where runners and walkers find their way.",
+                "Venture toward open fields where laughter rises and trails unwind.",
+                "Move onward where the water glistens near the shore under open sky.",
+                "Wander past stones and greenery where community and calm merge."
+            ];
+            return templates[Math.floor(Math.random() * templates.length)];
+        }
+
+        // Plan race
+        async function planRace() {
+            if (selectedStops.length < 3) {
+                alert("Please select at least 3 stops.");
+                return;
+            }
+            if (!finalPlace) {
+                alert("Please choose a final destination.");
+                return;
+            }
+
+            const teamA = [...selectedStops];
+            const teamB = [...selectedStops].reverse();
+
+            let out = `<h2>Team A Clues</h2>`;
+            teamA.forEach((loc, i) => {
+                const nextLoc = i < teamA.length - 1 ? teamA[i + 1] : finalPlace;
+                out += `<div class="clueCard"><strong>A${i + 1}:</strong> ${generateClue(loc, nextLoc)}</div>`;
+            });
+
+            out += `<h2>Team B Clues</h2>`;
+            teamB.forEach((loc, i) => {
+                const nextLoc = i < teamB.length - 1 ? teamB[i + 1] : finalPlace;
+                out += `<div class="clueCard"><strong>B${i + 1}:</strong> ${generateClue(loc, nextLoc)}</div>`;
+            });
+
+            document.getElementById("output").innerHTML = out;
+            drawMap(teamA, teamB, finalPlace);
+        }
+
+        async function getCoords(name) {
+            const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(name)}.json?access_token=${mapboxgl.accessToken}`;
+            const r = await fetch(url);
+            const d = await r.json();
+            return d.features?.[0]?.geometry?.coordinates;
+        }
+
+        // Draw map with paths
+        async function drawMap(A, B, finalName) {
+            const mapDiv = document.getElementById("map");
+            mapDiv.style.display = "block";
+
+            const places = [...new Set([...A, ...B, finalName])];
+            const coords = {};
+            for (let p of places) coords[p] = await getCoords(p);
+
+            const map = new mapboxgl.Map({
+                container: "map",
+                style: "mapbox://styles/mapbox/streets-v11",
+                center: coords[places[0]] || [-111.65, 40.25],
+                zoom: 12
+            });
+
+            function addLine(path, color) {
+                const coordinateArray = path.map(name => coords[name]);
+                map.on('load', () => {
+                    map.addSource(color + path.join("-"), {
+                        type: "geojson",
+                        data: { type: "Feature", geometry: { type: "LineString", coordinates: coordinateArray } }
+                    });
+                    map.addLayer({
+                        id: color + path.join("-"),
+                        type: "line",
+                        source: color + path.join("-"),
+                        layout: { "line-cap": "round", "line-join": "round" },
+                        paint: { "line-color": color, "line-width": 4 }
+                    });
+                });
+            }
+
+            addLine([...A, finalName], "red");
+            addLine([...B, finalName], "blue");
+
+            places.forEach(n => {
+                new mapboxgl.Marker().setLngLat(coords[n]).setPopup(new mapboxgl.Popup().setText(n)).addTo(map);
+            });
+        }
+
+        // PDF Export
+        function exportPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.text(document.getElementById("output").innerText, 10, 10);
+            doc.save("AmazingRace.pdf");
+        }
+
+    </script>
+
+</body>
+
+</html>
